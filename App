@@ -1,0 +1,872 @@
+from PyQt5.QtWidgets import QApplication, QWidget, QPushButton, QLabel, QStackedWidget, QVBoxLayout, QHBoxLayout, QScrollArea
+from PyQt5.QtGui import QPixmap, QIcon
+from PyQt5.QtCore import Qt, QTimer
+import json
+import random
+import sys
+import os
+from datetime import datetime
+
+if getattr(sys, 'frozen', False):
+    base_path = sys._MEIPASS
+else:
+    base_path = os.path.dirname(__file__)
+
+FON_IMAGE = os.path.join(base_path, "Materials", "MainFon.jpg")
+WINDOW_SIZE = (1200, 700)
+ACHIEVEMENTS_FILE = "achievements.json"
+
+OVAL_BTN_STYLE = '''QPushButton{background: white; 
+                                color: black; 
+                                border-radius: 30px; 
+                                font-size: 16px; 
+                                border: 2px solid #ddd;
+                                }
+                    QPushButton:hover{border: 3px solid orange; 
+                    background: white; color: black;}'''
+RECT_BTN_STYLE = '''QPushButton{background: white; 
+                                color: black; 
+                                border-radius: 25px; 
+                                font-size: 18px; 
+                                border: 2px solid #ddd;
+                                }
+                    QPushButton:hover{border: 3px solid orange; 
+                    background: white; color: black;}'''
+
+ACHIEVEMENTS = [
+    {
+        "id": "algebra_genius",
+        "name": "Гений алгебры",
+        "description": "Решить 20 сложных задач по алгебре",
+        "condition": {"topic": "алгебра", "level": "тяжёлый", "count": 20},
+        "completed": False,
+        "date_earned": None
+    },
+    {
+        "id": "geometry_genius",
+        "name": "Гений геометрии",
+        "description": "Решить 20 сложных задач по геометрии",
+        "condition": {"topic": "геометрия", "level": "тяжёлый", "count": 20},
+        "completed": False,
+        "date_earned": None
+    },
+    {
+        "id": "novice",
+        "name": "Новичок",
+        "description": "Решить 15 простых задач из лёгкого уровня",
+        "condition": {"level": "лёгкий", "count": 15},
+        "completed": False,
+        "date_earned": None
+    },
+    {
+        "id": "middle_point",
+        "name": "Середина отрезка",
+        "description": "Решить 15 задач из среднего уровня",
+        "condition": {"level": "средний", "count": 15},
+        "completed": False,
+        "date_earned": None
+    },
+    {
+        "id": "equation_master",
+        "name": "Мастер уравнений",
+        "description": "Решить 10 задач, связанных с темой 'уравнения'",
+        "condition": {"topic": "уравнения", "count": 10},
+        "completed": False,
+        "date_earned": None
+    },
+    {
+        "id": "inequality_master",
+        "name": "Мастер неравенств",
+        "description": "Решить 10 задач, связанных с темой 'неравенства'",
+        "condition": {"topic": "неравенства", "count": 10},
+        "completed": False,
+        "date_earned": None
+    },
+    {
+        "id": "all_hands_master",
+        "name": "Мастер на все руки",
+        "description": "Решить 20 задач лёгкого уровня, 10 среднего и 5 сложного",
+        "condition": {"mixed_levels": {"лёгкий": 20, "средний": 10, "тяжёлый": 5}},
+        "completed": False,
+        "date_earned": None
+    }
+]
+
+def load_questions_from_json(file_path):
+    with open(file_path, 'r', encoding='utf-8') as f:
+        return json.load(f)
+
+class AchievementManager:
+    def __init__(self):
+        self.achievements = ACHIEVEMENTS
+        self.progress = {}
+        self.load_achievements()
+
+    def load_achievements(self):
+        try:
+            if os.path.exists(ACHIEVEMENTS_FILE):
+                with open(ACHIEVEMENTS_FILE, 'r', encoding='utf-8') as f:
+                    saved_data = json.load(f)
+                    for saved_achievement in saved_data.get('achievements', []):
+                        for achievement in self.achievements:
+                            if achievement['id'] == saved_achievement['id']:
+                                achievement.update(saved_achievement)
+                    self.progress = saved_data.get('progress', {})
+        except Exception as e:
+            print(f"Error loading achievements: {e}")
+            self.progress = {}
+
+    def save_achievements(self):
+        try:
+            with open(ACHIEVEMENTS_FILE, 'w', encoding='utf-8') as f:
+                json.dump({
+                    'achievements': self.achievements,
+                    'progress': self.progress
+                }, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            print(f"Error saving achievements: {e}")
+
+    def increment_progress(self, topic=None, level=None):
+        newly_unlocked = []
+
+        for achievement in self.achievements:
+            if achievement['completed']:
+                continue
+
+            condition = achievement['condition']
+
+            if 'mixed_levels' in condition:
+                mixed_progress = self.progress.get(achievement['id'], {})
+                level_counts = condition['mixed_levels']
+
+                all_met = True
+                for level_req, count_req in level_counts.items():
+                    current_count = mixed_progress.get(level_req, 0)
+                    if level_req == level:
+                        current_count += 1
+                        current_count = min(current_count, count_req)
+                        mixed_progress[level_req] = current_count
+
+                    if current_count < count_req:
+                        all_met = False
+
+                self.progress[achievement['id']] = mixed_progress
+                if all_met:
+                    achievement['completed'] = True
+                    achievement['date_earned'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    newly_unlocked.append(achievement)
+
+            else:
+                matches_condition = True
+
+                if 'topic' in condition and topic:
+                    algebra_keywords = ['уравнени', 'алгебр', 'неравенств', 'модул', 'параметр', 'выражени',
+                                        'функции', 'график']
+                    if not any(keyword in topic.lower() for keyword in algebra_keywords):
+                        matches_condition = False
+                elif 'topic' in condition:
+                    if condition['topic'] == 'алгебра':
+                        algebra_keywords = ['уравнени', 'алгебр', 'неравенств', 'модул', 'параметр', 'выражени',
+                                            'функции', 'график']
+                        if not any(keyword in topic.lower() for keyword in algebra_keywords):
+                            matches_condition = False
+                    elif condition['topic'] == 'геометрия':
+                        if 'геометр' not in topic.lower():
+                            matches_condition = False
+                    elif condition['topic'] not in topic.lower():
+                        matches_condition = False
+
+                if 'level' in condition:
+                    russian_level_map = {"easy": "лёгкий", "medium": "средний", "hard": "тяжёлый"}
+                    normalized_level = level
+                    if level in ['easy', 'medium', 'hard']:
+                        normalized_level = russian_level_map[level]
+
+                    if normalized_level != condition['level']:
+                        matches_condition = False
+
+                if matches_condition:
+                    current_progress = self.progress.get(achievement['id'], 0)
+                    current_progress += 1
+                    current_progress = min(current_progress, condition['count'])
+                    self.progress[achievement['id']] = current_progress
+
+                    if current_progress >= condition['count']:
+                        achievement['completed'] = True
+                        achievement['date_earned'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                        newly_unlocked.append(achievement)
+
+        self.save_achievements()
+        return newly_unlocked
+
+    def reset_achievements(self):
+        for achievement in self.achievements:
+            achievement['completed'] = False
+            achievement['date_earned'] = None
+        self.progress = {}
+        self.save_achievements()
+
+achievement_manager = AchievementManager()
+
+class ResultWindow(QWidget):
+    def __init__(self, stacked_widget, level_idx, score, total_questions, questions_data, time_spent, user_answers):
+        super().__init__()
+        self.stacked_widget = stacked_widget
+        self.level_idx = level_idx
+        self.score = score
+        self.total_questions = total_questions
+        self.questions_data = questions_data
+        self.time_spent = time_spent
+        self.user_answers = user_answers
+        self.setWindowTitle('Результаты')
+        self.setFixedSize(*WINDOW_SIZE)
+        self.initUI()
+
+    def initUI(self):
+        self.label = QLabel(self)
+        pixmap = QPixmap(FON_IMAGE)
+        self.label.setPixmap(pixmap)
+        self.label.setAlignment(Qt.AlignCenter)
+        self.label.setScaledContents(True)
+        self.label.resize(self.width(), self.height())
+
+        title = QLabel(f'Результаты уровня {self.level_idx}', self)
+        title.setStyleSheet(
+            "background: white; color: black; border-radius: 25px; font-size: 18px; border: 2px solid #ddd;")
+        title.setFixedSize(400, 60)
+        title.move(self.width() // 2 - 200, 20)
+        title.setAlignment(Qt.AlignCenter)
+
+        minutes = self.time_spent // 60
+        seconds = self.time_spent % 60
+        if minutes > 0:
+            time_text = f"{minutes} мин {seconds} сек"
+        else:
+            time_text = f"{seconds} сек"
+
+        results_text = f"Правильных: {self.score}/{self.total_questions}\nПотрачено: {time_text}"
+        results_label = QLabel(results_text, self)
+        results_label.setStyleSheet(
+            "background: white; color: black; border-radius: 15px; font-size: 16px; border: 2px solid #ddd;")
+        results_label.setFixedSize(300, 100)
+        results_label.move(450, 100)
+        results_label.setAlignment(Qt.AlignCenter)
+
+        scroll_area = QScrollArea(self)
+        scroll_area.setGeometry(50, 220, 1100, 350)
+        scroll_area.setStyleSheet("QScrollArea { border: none; background: transparent; }")
+
+        scroll_content = QWidget()
+        scroll_layout = QVBoxLayout(scroll_content)
+        scroll_layout.setAlignment(Qt.AlignTop)
+
+        for i, q in enumerate(self.questions_data):
+            q_label = QLabel(f"Вопрос {i + 1}: {q['question']}", scroll_content)
+            q_label.setWordWrap(True)
+            q_label.setFixedWidth(1060)
+            q_label.setStyleSheet(
+                "background: white; color: black; border-radius: 10px; font-size: 16px; border: 1px solid #ddd; padding: 10px;")
+            scroll_layout.addWidget(q_label)
+
+            if i < len(self.user_answers):
+                user_answer_idx = self.user_answers[i]
+                user_answer_text = q["options"][user_answer_idx]
+            else:
+                user_answer_text = "Не отвечено"
+            user_label = QLabel(f"Ваш ответ: {user_answer_text}", scroll_content)
+            user_label.setFixedWidth(1060)
+            correct_answer = q.get("correct", q.get("correct_answer"))
+            if user_answer_text == correct_answer:
+                user_label.setStyleSheet(
+                    "background: #e6f9e6; color: black; border-radius: 5px; font-size: 12px; border: 1px solid #ccc; padding: 8px;")
+            else:
+                user_label.setStyleSheet(
+                    "background: #ffe6e6; color: black; border-radius: 5px; font-size: 12px; border: 1px solid #ccc; padding: 8px;")
+            scroll_layout.addWidget(user_label)
+
+            correct_answer = q.get("correct", q.get("correct_answer"))
+            correct_label = QLabel(f"Правильный ответ: {correct_answer}", scroll_content)
+            correct_label.setFixedWidth(1060)
+            correct_label.setStyleSheet(
+                "background: #e6f9e6; color: black; border-radius: 5px; font-size: 12px; border: 1px solid #ccc; padding: 8px;")
+            scroll_layout.addWidget(correct_label)
+
+            exp_label = QLabel(f"Пояснение: {q['explanation']}", scroll_content)
+            exp_label.setWordWrap(True)
+            exp_label.setFixedWidth(1060)
+            exp_label.setStyleSheet(
+                "background: #f0f8ff; color: black; border-radius: 10px; font-size: 12px; border: 1px solid #ccc; padding: 10px;")
+            scroll_layout.addWidget(exp_label)
+
+            spacer = QLabel("", scroll_content)
+            spacer.setFixedHeight(10)
+            scroll_layout.addWidget(spacer)
+
+        scroll_area.setWidget(scroll_content)
+        scroll_area.setWidgetResizable(True)
+
+        back_button = QPushButton('Вернуться в главное меню', self)
+        back_button.setFixedSize(250, 70)
+        back_button.setStyleSheet(RECT_BTN_STYLE)
+        back_button.move(self.width() - 260, 10)
+        back_button.clicked.connect(self.backToMain)
+
+    def backToMain(self):
+        for i in range(self.stacked_widget.count()):
+            widget = self.stacked_widget.widget(i)
+            if isinstance(widget, AchievementsWindow):
+                widget.deleteLater()
+
+        self.stacked_widget.setCurrentIndex(0)
+
+class TasksLevelWindow(QWidget):
+    def __init__(self, title, stacked_widget, level_idx, total_questions=5):
+        super().__init__()
+        self.stacked_widget = stacked_widget
+        self.level_idx = level_idx
+        self.total_questions = total_questions
+        self.setWindowTitle(title)
+        self.setFixedSize(*WINDOW_SIZE)
+
+        time_total = {1: 300, 2: 600, 3: 900}.get(level_idx, 300)
+        self.time_left = time_total
+
+        self.timer = QTimer(self)
+        self.timer.timeout.connect(self.update_timer)
+        self.time_up_shown = False
+        self.current_question_index = 0
+        self.score = 0
+        self.questions_data = []
+        self.user_answers = []
+
+        self.initUI(title)
+        self.generate_questions()
+        self.start_timer()
+
+    def __del__(self):
+        if self.timer and self.timer.isActive():
+            self.timer.stop()
+
+    def hideEvent(self, event):
+        if self.timer and self.timer.isActive():
+            self.timer.stop()
+        super().hideEvent(event)
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        if self.timer and not self.timer.isActive() and self.time_left > 0:
+            self.timer.start(1000)
+
+    def initUI(self, title):
+        self.label = QLabel(self)
+        pixmap = QPixmap(FON_IMAGE)
+        self.label.setPixmap(pixmap)
+        self.label.setAlignment(Qt.AlignCenter)
+        self.label.setScaledContents(True)
+        self.label.resize(self.width(), self.height())
+
+        self.level_title = QLabel(title, self)
+        self.level_title.setStyleSheet(
+            "background: white; color: black; border-radius: 25px; font-size: 18px; border: 2px solid #ddd;")
+        self.level_title.setAlignment(Qt.AlignCenter)
+        self.level_title.setGeometry(450, 20, 300, 50)
+
+        self.timer_label = QLabel(self.format_time(self.time_left), self)
+        self.timer_label.setStyleSheet("font-size: 24px; color: white; background: rgba(0,0,0,0.5); padding: 10px;")
+        self.timer_label.setGeometry(20, 10, 150, 50)
+
+    def generate_questions(self):
+        all_questions = load_questions_from_json('questions.json')
+        level_map = {1: "лёгкий", 2: "средний", 3: "тяжёлый"}
+        target_level = level_map.get(self.level_idx, "лёгкий")
+
+        if target_level == "лёгкий":
+            filtered_questions = [q for q in all_questions if q["level"] in ["лёгкий", "easy"]]
+        elif target_level == "средний":
+            filtered_questions = [q for q in all_questions if q["level"] in ["средний", "medium"]]
+        elif target_level == "тяжёлый":
+            filtered_questions = [q for q in all_questions if q["level"] in ["тяжёлый", "hard"]]
+        else:
+            filtered_questions = [q for q in all_questions if q["level"] == target_level]
+
+        selected_questions = random.sample(filtered_questions, min(self.total_questions, len(filtered_questions)))
+        self.questions_data = selected_questions
+        self.show_current_question()
+
+    def restart_level(self):
+        self.timer.stop()
+        self.time_up_shown = False
+        self.current_question_index = 0
+        self.score = 0
+        self.user_answers = []
+        if hasattr(self, '_current_question_widgets'):
+            for widget in self._current_question_widgets:
+                widget.deleteLater()
+        self._current_question_widgets = []
+        self.generate_questions()
+        time_total = {1: 300, 2: 600, 3: 900}.get(self.level_idx, 300)
+        self.time_left = time_total
+        self.timer_label.setText(self.format_time(self.time_left))
+        self.start_timer()
+
+    def show_current_question(self):
+        if self.current_question_index < len(self.questions_data):
+            current_q = self.questions_data[self.current_question_index]
+            self.display_question_ui(current_q)
+        else:
+            self.go_to_results()
+
+    def display_question_ui(self, data):
+        if hasattr(self, '_current_question_widgets'):
+            for widget in self._current_question_widgets:
+                widget.hide()
+                widget.deleteLater()
+        self._current_question_widgets = []
+
+        question_label = QLabel(data["question"], self)
+        question_label.setWordWrap(True)
+        question_label.setAlignment(Qt.AlignCenter)
+        question_label.setFixedSize(800, 100)
+        question_label.move(200, 150)
+        question_label.setStyleSheet(
+            "background: white; "
+            "color: black; "
+            "border-radius: 35px; "
+            "font-size: 18px; "
+            "border: 2px solid #ddd; "
+            "padding: 10px;"
+        )
+        question_label.show()
+        self._current_question_widgets.append(question_label)
+
+        options = data["options"]
+        for i, opt in enumerate(options):
+            btn = QPushButton(opt, self)
+            btn.setFixedSize(250, 60)
+            btn.setStyleSheet(OVAL_BTN_STYLE)
+            x = 325 + (i % 2) * 270
+            y = 300 + (i // 2) * 120
+            btn.move(x, y)
+            correct_answer = data.get("correct", data.get("correct_answer"))
+            btn.setProperty("correct_answer", correct_answer)
+            btn.clicked.connect(lambda _, idx=i: self.check_answer(idx))
+            btn.show()
+            self._current_question_widgets.append(btn)
+
+    def check_answer(self, option_index):
+        current_q = self.questions_data[self.current_question_index]
+        correct_answer = current_q.get("correct", current_q.get("correct_answer"))
+        if current_q["options"][option_index] == correct_answer:
+            self.score += 1
+            topic = current_q.get("topic", "")
+            level = current_q["level"]
+            achievement_manager.increment_progress(topic=topic, level=level)
+        self.user_answers.append(option_index)
+        self.current_question_index += 1
+        self.show_current_question()
+
+    def go_to_results(self):
+        self.timer.stop()
+        time_spent = {1: 300, 2: 600, 3: 900}.get(self.level_idx, 300) - self.time_left
+        time_spent = max(0, time_spent)
+        result_window = ResultWindow(
+            self.stacked_widget,
+            self.level_idx,
+            self.score,
+            self.total_questions,
+            self.questions_data,
+            time_spent,
+            self.user_answers
+        )
+        self.stacked_widget.addWidget(result_window)
+        self.stacked_widget.setCurrentWidget(result_window)
+
+    def go_to_results_modal(self, container):
+        self.timer.stop()
+        container.close()
+        time_spent = {1: 300, 2: 600, 3: 900}.get(self.level_idx, 300) - self.time_left
+        time_spent = max(0, time_spent)
+        result_window = ResultWindow(
+            self.stacked_widget,
+            self.level_idx,
+            self.score,
+            self.total_questions,
+            self.questions_data,
+            time_spent,
+            self.user_answers
+        )
+        self.stacked_widget.addWidget(result_window)
+        self.stacked_widget.setCurrentWidget(result_window)
+
+    def format_time(self, seconds):
+        minutes = seconds // 60
+        secs = seconds % 60
+        return f"{minutes:02d}:{secs:02d}"
+
+    def start_timer(self):
+        self.timer.start(1000)
+
+    def update_timer(self):
+        self.time_left -= 1
+        if self.time_left >= 0:
+            self.timer_label.setText(self.format_time(self.time_left))
+        if self.time_left <= 0:
+            self.time_left = 0
+            self.timer.stop()
+            if not self.time_up_shown:
+                self.show_time_up_message()
+
+    def show_time_up_message(self):
+        self.time_up_shown = True
+
+        self.modal_container = QWidget(self)
+        self.modal_container.setGeometry(0, 0, self.width(), self.height())
+        self.modal_container.setStyleSheet("background: transparent;")
+        self.modal_container.setAttribute(Qt.WA_TransparentForMouseEvents, False)
+
+        overlay = QWidget(self.modal_container)
+        overlay.setGeometry(0, 0, self.width(), self.height())
+        overlay.setStyleSheet("background: rgba(0,0,0,0.5);")
+
+        message_box = QWidget(self.modal_container)
+        message_box.setStyleSheet("background: white; border-radius: 25px; border: 2px solid #ddd;")
+        message_box.setGeometry(400, 200, 400, 200)
+
+        layout = QVBoxLayout(message_box)
+        label = QLabel("Время истекло!", message_box)
+        label.setStyleSheet("font-size: 24px; color: black; background: transparent; border: none;")
+        label.setAlignment(Qt.AlignCenter)
+        button = QPushButton("Перейти к ответам", message_box)
+        button.setStyleSheet(RECT_BTN_STYLE)
+        button.setFixedSize(250, 70)
+        button.clicked.connect(lambda: self.go_to_results_modal(self.modal_container))
+        layout.addWidget(label)
+        layout.addWidget(button)
+        layout.setAlignment(Qt.AlignCenter)
+
+        self.modal_container.show()
+        message_box.raise_()
+
+    def backToLevel(self):
+        self.timer.stop()
+        self.stacked_widget.setCurrentIndex(self.level_idx)
+
+class MainWindow(QWidget):
+    def __init__(self, stacked_widget):
+        super().__init__()
+        self.stacked_widget = stacked_widget
+        self.setWindowTitle('Приложение для обучения')
+        self.setFixedSize(*WINDOW_SIZE)
+        self.initUI()
+
+    def initUI(self):
+        self.label = QLabel(self)
+        pixmap = QPixmap(FON_IMAGE)
+        self.label.setPixmap(pixmap)
+        self.label.setAlignment(Qt.AlignCenter)
+        self.label.setScaledContents(True)
+        self.label.resize(self.width(), self.height())
+        self.button_start = QPushButton('Обучение математике', self)
+        self.button_start.setFixedSize(250, 70)
+        self.button_start.setStyleSheet(RECT_BTN_STYLE)
+        self.button_start.move(475, 55)
+        self.button_start.setEnabled(False)
+
+        self.achievements_button = QPushButton('Достижения', self)
+        self.achievements_button.setFixedSize(150, 50)
+        self.achievements_button.setStyleSheet(RECT_BTN_STYLE)
+        self.achievements_button.move(self.width() - 160, 10)
+        self.achievements_button.clicked.connect(self.open_achievements)
+
+        self.reset_achievements_button = QPushButton('Сбросить достижения', self)
+        self.reset_achievements_button.setFixedSize(200, 50)
+        self.reset_achievements_button.setStyleSheet(RECT_BTN_STYLE)
+        self.reset_achievements_button.move(self.width() - 370, 10)
+        self.reset_achievements_button.clicked.connect(self.reset_achievements)
+
+        levels = [('Уровень 1 (Лёгкий)', 1, 250), ('Уровень 2 (Средний)', 2, 350), ('Уровень 3 (Сложный)', 3, 450), ]
+        self.buttons = []
+        for text, idx, y in levels:
+            btn = QPushButton(text, self)
+            btn.setFixedSize(300, 70)
+            btn.setStyleSheet(RECT_BTN_STYLE)
+            btn.move(445, y)
+            btn.clicked.connect(lambda _, i=idx: self.openLevel(i))
+            self.buttons.append(btn)
+
+    def reset_achievements(self):
+        achievement_manager.reset_achievements()
+
+    def open_achievements(self):
+        for i in range(self.stacked_widget.count()):
+            widget = self.stacked_widget.widget(i)
+            if isinstance(widget, AchievementsWindow):
+                self.stacked_widget.setCurrentWidget(widget)
+                return
+
+        achievements_window = AchievementsWindow(self.stacked_widget)
+        self.stacked_widget.addWidget(achievements_window)
+        self.stacked_widget.setCurrentWidget(achievements_window)
+
+    def openLevel(self, level_idx):
+        tasks_window = None
+        for i in range(self.stacked_widget.count()):
+            widget = self.stacked_widget.widget(i)
+            if isinstance(widget, TasksLevelWindow) and widget.level_idx == level_idx:
+                tasks_window = widget
+                break
+
+        if tasks_window is None:
+            level_titles = ["", "Уровень 1 (Лёгкий)", "Уровень 2 (Средний)", "Уровень 3 (Сложный)"]
+            title = level_titles[level_idx] if level_idx < len(level_titles) else f"Уровень {level_idx}"
+            tasks_window = TasksLevelWindow(title, self.stacked_widget, level_idx, 5)
+            self.stacked_widget.addWidget(tasks_window)
+
+        tasks_window.restart_level()
+        self.stacked_widget.setCurrentWidget(tasks_window)
+
+class AchievementsWindow(QWidget):
+    def __init__(self, stacked_widget):
+        super().__init__()
+        self.stacked_widget = stacked_widget
+        self.setWindowTitle('Достижения')
+        self.setFixedSize(*WINDOW_SIZE)
+        self.initUI()
+
+    def initUI(self):
+        self.label = QLabel(self)
+        pixmap = QPixmap(FON_IMAGE)
+        self.label.setPixmap(pixmap)
+        self.label.setAlignment(Qt.AlignCenter)
+        self.label.setScaledContents(True)
+        self.label.resize(self.width(), self.height())
+
+        title = QLabel('Достижения', self)
+        title.setStyleSheet(
+            "background: white; color: black; border-radius: 25px; font-size: 24px; border: 2px solid #ddd;")
+        title.setFixedSize(300, 60)
+        title.move(self.width() // 2 - 150, 20)
+        title.setAlignment(Qt.AlignCenter)
+
+        exit_button = QPushButton('Выйти', self)
+        exit_button.setFixedSize(100, 50)
+        exit_button.setStyleSheet(RECT_BTN_STYLE)
+        exit_button.move(20, 20)
+        exit_button.clicked.connect(self.backToMain)
+
+        scroll_area = QScrollArea(self)
+        scroll_area.setGeometry(50, 100, 1100, 500)
+        scroll_area.setStyleSheet("QScrollArea { border: none; background: transparent; }")
+
+        scroll_content = QWidget()
+        scroll_layout = QVBoxLayout(scroll_content)
+        scroll_layout.setAlignment(Qt.AlignTop)
+
+        for achievement in achievement_manager.achievements:
+            achievement_widget = self.create_achievement_widget(achievement)
+            scroll_layout.addWidget(achievement_widget)
+
+        scroll_area.setWidget(scroll_content)
+        scroll_area.setWidgetResizable(True)
+
+    def create_achievement_widget(self, achievement):
+        container = QWidget()
+        container.setStyleSheet("""
+            QWidget {
+                background: white;
+                border-radius: 15px;
+                border: 2px solid #ddd;
+                padding: 10px;
+                margin: 10px;
+            }
+        """)
+        container_layout = QVBoxLayout(container)
+
+        header_layout = QVBoxLayout()
+
+        if achievement['completed']:
+            name_label = QLabel(f"🏆 {achievement['name']} ✅", container)
+        else:
+            name_label = QLabel(f"🏆 {achievement['name']}", container)
+        name_label.setStyleSheet("font-size: 18px; font-weight: bold; color: black; margin-bottom: 5px;")
+        name_label.setAlignment(Qt.AlignCenter)
+        header_layout.addWidget(name_label)
+
+        desc_label = QLabel(achievement['description'], container)
+        desc_label.setStyleSheet("font-size: 16px; color: black; margin: 5px;")
+        desc_label.setAlignment(Qt.AlignCenter)
+        desc_label.setWordWrap(True)
+        header_layout.addWidget(desc_label)
+
+        if 'mixed_levels' in achievement['condition']:
+            progress_text = self.get_mixed_progress_text(achievement)
+            progress_label = QLabel(progress_text, container)
+            progress_label.setStyleSheet("font-size: 16px; color: black; margin: 5px;")
+            progress_label.setAlignment(Qt.AlignCenter)
+            header_layout.addWidget(progress_label)
+
+            mixed_progress = achievement_manager.progress.get(achievement['id'], {})
+            for level, required in achievement['condition']['mixed_levels'].items():
+                current = min(mixed_progress.get(level, 0), required)
+                level_progress = QLabel(f"{level.capitalize()}: {current}/{required}", container)
+                level_progress.setStyleSheet("font-size: 12px; color: black; margin: 2px;")
+                level_progress.setAlignment(Qt.AlignCenter)
+                header_layout.addWidget(level_progress)
+        else:
+            required = achievement['condition']['count']
+            current = achievement_manager.progress.get(achievement['id'], 0)
+            current = min(current, required)
+
+            if achievement['completed']:
+                progress_label = QLabel(f"Завершено!", container)
+            else:
+                progress_label = QLabel(f"Прогресс: {current}/{required}", container)
+            progress_label.setStyleSheet("font-size: 16px; color: black; margin: 5px;")
+            progress_label.setAlignment(Qt.AlignCenter)
+            header_layout.addWidget(progress_label)
+
+        progress_percent = self.calculate_achievement_progress(achievement)
+        progress_status = QLabel(f"{int(progress_percent)}%", container)
+        progress_status.setStyleSheet("font-size: 16px; color: black; margin: 5px;")
+        progress_status.setAlignment(Qt.AlignCenter)
+        header_layout.addWidget(progress_status)
+
+        container_layout.addLayout(header_layout)
+
+        if achievement['completed']:
+            award_claimed = achievement.get('date_earned', None) is not None
+            if award_claimed:
+                award_button = QPushButton('Награда получена', container)
+                award_button.setFixedSize(200, 50)
+                award_button.setStyleSheet(
+                    "QPushButton{background: #cccccc; color: #666666; border-radius: 25px; font-size: 16px; border: 2px solid #aaa;}")
+                award_button.clicked.connect(lambda: self.show_award_popup(achievement))
+            else:
+                award_button = QPushButton('Забрать награду', container)
+                award_button.setFixedSize(200, 50)
+                award_button.setStyleSheet(RECT_BTN_STYLE)
+                award_button.clicked.connect(lambda: self.claim_achievement(achievement))
+
+            h_layout = QHBoxLayout()
+            h_layout.addStretch()
+            h_layout.addWidget(award_button)
+            h_layout.addStretch()
+            container_layout.addLayout(h_layout)
+
+        container_layout.addStretch()
+
+        return container
+
+    def show_award_popup(self, achievement):
+        modal_container = QWidget(self)
+        modal_container.setGeometry(0, 0, self.width(), self.height())
+        modal_container.setStyleSheet("background: transparent;")
+        modal_container.setAttribute(Qt.WA_TransparentForMouseEvents, False)
+
+        overlay = QWidget(modal_container)
+        overlay.setGeometry(0, 0, self.width(), self.height())
+        overlay.setStyleSheet("background: rgba(0,0,0,0.5);")
+
+        message_box = QWidget(modal_container)
+        message_box.setStyleSheet("background: white; border-radius: 25px; border: 2px solid #ddd;")
+        message_box.setGeometry(400, 200, 400, 200)
+
+        layout = QVBoxLayout(message_box)
+
+        label = QLabel(f"Достижение {achievement['name']} выполнено!", message_box)
+        label.setStyleSheet("font-size: 18px; color: black; background: transparent; border: none;")
+        label.setAlignment(Qt.AlignCenter)
+        label.setWordWrap(True)
+
+        close_button = QPushButton("×", message_box)
+        close_button.setFixedSize(30, 30)
+        close_button.setStyleSheet("""
+            QPushButton {
+                font-size: 20px;
+                font-weight: bold;
+                background-color: #ff6b6b;
+                color: white;
+                border-radius: 15px;
+                border: none;
+            }
+            QPushButton:hover {
+                background-color: #ff5252;
+            }
+        """)
+        close_button.move(message_box.width() - 35, 5)
+        close_button.clicked.connect(lambda: modal_container.deleteLater())
+
+        layout.addWidget(label)
+        layout.setAlignment(Qt.AlignCenter)
+
+        modal_container.show()
+        message_box.raise_()
+
+    def get_mixed_progress_text(self, achievement):
+        mixed_progress = achievement_manager.progress.get(achievement['id'], {})
+        total_completed = 0
+        total_required = 0
+
+        for level, required in achievement['condition']['mixed_levels'].items():
+            current = min(mixed_progress.get(level, 0), required)
+            total_completed += current
+            total_required += required
+
+        return f"Прогресс: {total_completed}/{total_required}"
+
+    def calculate_achievement_progress(self, achievement):
+        if 'mixed_levels' in achievement['condition']:
+            mixed_progress = achievement_manager.progress.get(achievement['id'], {})
+            total_completed = 0
+            total_required = 0
+
+            for level, required in achievement['condition']['mixed_levels'].items():
+                current = min(mixed_progress.get(level, 0), required)
+                total_completed += current
+                total_required += required
+
+            if total_required == 0:
+                return 0
+            return min(100, (total_completed / total_required) * 100)
+        else:
+            required = achievement['condition']['count']
+            current = min(achievement_manager.progress.get(achievement['id'], 0), required)
+            if required == 0:
+                return 0
+            return min(100, (current / required) * 100)
+
+    def claim_achievement(self, achievement):
+        achievement['date_earned'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        achievement_manager.save_achievements()
+
+        from PyQt5.QtWidgets import QMessageBox
+        msg = QMessageBox()
+        msg.setWindowTitle('Поздравляем!')
+        msg.setText(f'Вы выполнили достижение "{achievement["name"]}"!')
+        msg.setStyleSheet("background-color: white; color: black;")
+        msg.exec_()
+
+        self.refresh_achievements()
+
+    def refresh_achievements(self):
+        for i in reversed(range(self.layout().count())):
+            self.layout().itemAt(i).widget().setParent(None)
+
+        self.initUI()
+
+    def backToMain(self):
+        self.stacked_widget.setCurrentIndex(0)
+
+def createApp():
+    app = QApplication(sys.argv)
+    icon_path = os.path.join(base_path, "Materials", "redApple.ico")
+    app.setWindowIcon(QIcon(icon_path))
+    stack = QStackedWidget()
+    stack.setFixedSize(*WINDOW_SIZE)
+    main_win = MainWindow(stack)
+    stack.addWidget(main_win)
+    stack.show()
+    sys.exit(app.exec_())
+
+if __name__ == '__main__':
+    createApp()
