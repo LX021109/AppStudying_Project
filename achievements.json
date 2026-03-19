@@ -1,0 +1,92 @@
+{
+  "achievements": [
+    {
+      "id": "algebra_genius",
+      "name": "Гений алгебры",
+      "description": "Решить 20 сложных задач по алгебре",
+      "condition": {
+        "topic": "алгебра",
+        "level": "тяжёлый",
+        "count": 20
+      },
+      "completed": false,
+      "date_earned": null
+    },
+    {
+      "id": "geometry_genius",
+      "name": "Гений геометрии",
+      "description": "Решить 20 сложных задач по геометрии",
+      "condition": {
+        "topic": "геометрия",
+        "level": "тяжёлый",
+        "count": 20
+      },
+      "completed": false,
+      "date_earned": null
+    },
+    {
+      "id": "novice",
+      "name": "Новичок",
+      "description": "Решить 15 простых задач из лёгкого уровня",
+      "condition": {
+        "level": "лёгкий",
+        "count": 15
+      },
+      "completed": false,
+      "date_earned": null
+    },
+    {
+      "id": "middle_point",
+      "name": "Середина отрезка",
+      "description": "Решить 15 задач из среднего уровня",
+      "condition": {
+        "level": "средний",
+        "count": 15
+      },
+      "completed": false,
+      "date_earned": null
+    },
+    {
+      "id": "equation_master",
+      "name": "Мастер уравнений",
+      "description": "Решить 10 задач, связанных с темой 'уравнения'",
+      "condition": {
+        "topic": "уравнения",
+        "count": 10
+      },
+      "completed": false,
+      "date_earned": null
+    },
+    {
+      "id": "inequality_master",
+      "name": "Мастер неравенств",
+      "description": "Решить 10 задач, связанных с темой 'неравенства'",
+      "condition": {
+        "topic": "неравенства",
+        "count": 10
+      },
+      "completed": false,
+      "date_earned": null
+    },
+    {
+      "id": "all_hands_master",
+      "name": "Мастер на все руки",
+      "description": "Решить 20 задач лёгкого уровня, 10 среднего и 5 сложного",
+      "condition": {
+        "mixed_levels": {
+          "лёгкий": 20,
+          "средний": 10,
+          "тяжёлый": 5
+        }
+      },
+      "completed": false,
+      "date_earned": null
+    }
+  ],
+  "progress": {
+    "novice": 10,
+    "equation_master": 2,
+    "inequality_master": 2,
+    "all_hands_master": {}
+  }
+}
